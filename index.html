@@ -147,7 +147,9 @@
     }
 
     // Tímto oficiálním příkazem Mapy.cz řekneme zavaděči, aby načetl doplňky a pak spustil funkci initMap
-    Loader.load(null, {suggest: true, route: true}, initMap);
+    // Tímto oficiálním příkazem Mapy.cz řekneme zavaděči, aby načetl doplňky asynchronně a pak spustil funkci initMap
+Loader.async = true;
+Loader.load(null, {suggest: true, route: true}, initMap);
 
     // Funkce pro navázání našeptávače na textové pole
     function setupSuggest(inputId, pointKey) {
