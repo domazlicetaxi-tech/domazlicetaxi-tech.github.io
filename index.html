@@ -149,7 +149,14 @@
     // Tímto oficiálním příkazem Mapy.cz řekneme zavaděči, aby načetl doplňky a pak spustil funkci initMap
     // Tímto oficiálním příkazem Mapy.cz řekneme zavaděči, aby načetl doplňky asynchronně a pak spustil funkci initMap
 Loader.async = true;
-Loader.load(null, {suggest: true, route: true}, initMap);
+Loader.load(null, {suggest: true, route: true}, function() {
+    // Tady zajistíme, že se kód spustí, až když je SMap prokazatelně načtený
+    if (typeof SMap !== 'undefined') {
+        initMap();
+    } else {
+        console.error("Knihovna SMap se nepodařilo načíst.");
+    }
+});
 
     // Funkce pro navázání našeptávače na textové pole
     function setupSuggest(inputId, pointKey) {
