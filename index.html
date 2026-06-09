@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Logistická Kalkulačka Trasy a Ceny</title>
+    <!-- Načtení knihovny Mapy.cz -->
     <script src="https://api.mapy.cz/loader.js?key=rl9Uzfp9bc8IWYM2DARh3pOHJO4Y65LoMOnGoPJjgAw"></script>
     
     <style>
@@ -95,25 +96,18 @@
 </div>
 
 <script>
+    // Logika aplikace přesunuta na konec pro zajištění bezpečného načtení knihovny
     let baseCoords;
     let map, layerMarkers, layerGeometry;
     let stopCount = 0;
+    const PRICE_PER_KM = 13;
+    const BASE_FEE = 20;
 
-    const PRICE_PER_KM = 13;   
-    const BASE_FEE = 20;       
-
-    let routePoints = {
-        baseStart: null,
-        pickup: null,
-        stop1: null,
-        stop2: null,
-        destination: null,
-        baseEnd: null
-    };
+    let routePoints = { baseStart: null, pickup: null, stop1: null, stop2: null, destination: null, baseEnd: null };
 
     function initMap() {
+        if (typeof SMap === 'undefined') return;
         baseCoords = SMap.Coords.fromWGS84(12.932068, 49.440478);
-        
         routePoints.baseStart = baseCoords;
         routePoints.baseEnd = baseCoords;
 
@@ -139,25 +133,14 @@
         });
     }
 
-    // --- BEZPEČNÉ NAČTENÍ ---
-    Loader.async = true;
+    // Bezpečné načtení
     Loader.load(null, {suggest: true, route: true}, function() {
-        if (typeof SMap !== 'undefined') {
-            initMap();
-        } else {
-            console.error("Knihovna SMap nebyla nalezena.");
-        }
+        initMap();
     });
 
     function setupSuggest(inputId, pointKey) {
         let input = JAK.gel(inputId);
-        let suggest = new SMap.Suggest(input, {
-            provider: new SMap.SuggestProvider({
-                updateInputs: true,
-                bounds: "48.5,12.0|51.1,18.9"
-            })
-        });
-        
+        let suggest = new SMap.Suggest(input, { provider: new SMap.SuggestProvider({ updateInputs: true, bounds: "48.5,12.0|51.1,18.9" }) });
         suggest.addListener("select", function(e) {
             routePoints[pointKey] = SMap.Coords.fromWGS84(e.data.longitude, e.data.latitude);
             updateMapMarkers();
@@ -165,38 +148,21 @@
     }
 
     function addStop() {
-        if (stopCount === 0) {
-            document.getElementById("stop1-group").style.display = "block";
-            stopCount++;
-        } else if (stopCount === 1) {
-            document.getElementById("stop2-group").style.display = "block";
-            document.getElementById("add-stop-btn").style.display = "none";
-            stopCount++;
-        }
+        if (stopCount === 0) { document.getElementById("stop1-group").style.display = "block"; stopCount++; } 
+        else if (stopCount === 1) { document.getElementById("stop2-group").style.display = "block"; document.getElementById("add-stop-btn").style.display = "none"; stopCount++; }
     }
 
     function handleMapClick(coords) {
-        if (!routePoints.pickup) {
-            routePoints.pickup = coords;
-            reverseGeocode(coords, "pickup");
-        } else if (!routePoints.destination) {
-            routePoints.destination = coords;
-            reverseGeocode(coords, "destination");
-        } else if (stopCount > 0 && !routePoints.stop1) {
-            routePoints.stop1 = coords;
-            reverseGeocode(coords, "stop1");
-        } else if (stopCount > 1 && !routePoints.stop2) {
-            routePoints.stop2 = coords;
-            reverseGeocode(coords, "stop2");
-        }
+        if (!routePoints.pickup) { routePoints.pickup = coords; reverseGeocode(coords, "pickup"); }
+        else if (!routePoints.destination) { routePoints.destination = coords; reverseGeocode(coords, "destination"); }
+        else if (stopCount > 0 && !routePoints.stop1) { routePoints.stop1 = coords; reverseGeocode(coords, "stop1"); }
+        else if (stopCount > 1 && !routePoints.stop2) { routePoints.stop2 = coords; reverseGeocode(coords, "stop2"); }
     }
 
     function reverseGeocode(coords, inputId) {
         new SMap.Geocoder(coords, function(geocoder) {
             let results = geocoder.getResults();
-            if (results && results.items.length > 0) {
-                document.getElementById(inputId).value = results.items[0].label;
-            }
+            if (results && results.items.length > 0) { document.getElementById(inputId).value = results.items[0].label; }
             updateMapMarkers();
         });
     }
@@ -204,7 +170,6 @@
     function updateMapMarkers() {
         layerMarkers.clear();
         layerMarkers.addMarker(new SMap.Marker(baseCoords, "Základna", {title: "Základna Domažlice"}));
-        
         if (routePoints.pickup) layerMarkers.addMarker(new SMap.Marker(routePoints.pickup, "A", {title: "Nakládka"}));
         if (routePoints.stop1) layerMarkers.addMarker(new SMap.Marker(routePoints.stop1, "B", {title: "Zastávka 1"}));
         if (routePoints.stop2) layerMarkers.addMarker(new SMap.Marker(routePoints.stop2, "C", {title: "Zastávka 2"}));
@@ -212,11 +177,7 @@
     }
 
     function calculateRoute() {
-        if (!routePoints.pickup || !routePoints.destination) {
-            alert("Prosím vyplňte minimálně Místo nakládky a Cíl/Vykládku.");
-            return;
-        }
-
+        if (!routePoints.pickup || !routePoints.destination) { alert("Prosím vyplňte minimálně Místo nakládky a Cíl/Vykládku."); return; }
         let points = [routePoints.baseStart, routePoints.pickup];
         if (routePoints.stop1) points.push(routePoints.stop1);
         if (routePoints.stop2) points.push(routePoints.stop2);
@@ -226,22 +187,15 @@
         new SMap.Route(points, function(route) {
             let distanceInMeters = route.getResults().length;
             let distanceInKm = distanceInMeters / 1000;
-            
             let totalPrice = Math.round((distanceInKm * PRICE_PER_KM) + BASE_FEE);
-            
             document.getElementById("total-distance").innerText = distanceInKm.toFixed(1) + " km";
             document.getElementById("total-price").innerText = totalPrice.toLocaleString('cs-CZ') + " Kč";
             document.getElementById("results-box").style.display = "block";
-
             layerGeometry.clear();
-            let coords = route.getResults().geometry;
-            let geometry = new SMap.Geometry(SMap.GEOMETRY_POLYLINE, null, coords, {color: "#2563eb", width: 5});
-            layerGeometry.addGeometry(geometry);
-            
-            map.zoomOut(); 
+            layerGeometry.addGeometry(new SMap.Geometry(SMap.GEOMETRY_POLYLINE, null, route.getResults().geometry, {color: "#2563eb", width: 5}));
+            map.zoomOut();
         }, {criterion: "fast"});
     }
 </script>
-
 </body>
 </html>
