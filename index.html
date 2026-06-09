@@ -2,130 +2,102 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
-    <title>Logistická Kalkulačka - Leaflet</title>
-    <!-- Leaflet CSS & JS -->
+    <title>Kalkulačka - Robustní verze</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-    <!-- Routing Machine -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
     <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
-
-    <!-- Geocoder (Našeptávač) -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
     <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
 
     <style>
-        body { margin: 0; padding: 0; display: flex; height: 100vh; font-family: sans-serif; }
-        #panel { width: 350px; padding: 20px; background: #f4f4f4; overflow-y: auto; box-shadow: 2px 0 5px rgba(0,0,0,0.1); z-index: 1000; }
-        #map { flex-grow: 1; }
-        .input-group { margin-bottom: 15px; }
-        input { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; }
-        button { width: 100%; padding: 10px; background: #2563eb; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; }
-        #results { margin-top: 20px; padding: 15px; background: white; border-radius: 8px; border: 1px solid #ddd; display: none; }
+        body { margin: 0; padding: 10px; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
+        #app { display: flex; height: 90vh; gap: 10px; }
+        #panel { width: 350px; background: #f0f0f0; padding: 15px; overflow-y: auto; }
+        #map { flex-grow: 1; border: 2px solid #ccc; }
+        .error-log { color: red; font-weight: bold; margin: 10px 0; padding: 5px; border: 1px solid red; }
+        .success-log { color: green; margin: 10px 0; }
+        input { width: 90%; margin-bottom: 10px; padding: 8px; }
+        button { padding: 10px; width: 100%; cursor: pointer; }
     </style>
 </head>
 <body>
 
-<div id="panel">
-    <h2>Kalkulačka přepravy</h2>
-    <div class="input-group">
-        <label>Základna (Start/Cíl):</label>
-        <input type="text" value="B. Staška 76, Domažlice" disabled>
+    <div id="app">
+        <div id="panel">
+            <h2>Kalkulačka</h2>
+            <label>Nakládka:</label><br>
+            <input type="text" id="pickup" value="B. Staška 76, Domažlice"><br>
+            <label>Vykládka:</label><br>
+            <input type="text" id="dropoff" placeholder="Adresa vykládky..."><br>
+            <button onclick="runCalculation()">Vypočítat trasu</button>
+            
+            <div id="log" class="error-log"></div>
+            
+            <div id="results" style="display:none; background: #fff; padding: 10px; margin-top: 10px;">
+                <h3>Výsledek</h3>
+                <p>Vzdálenost: <span id="dist">0</span> km</p>
+                <p>Cena: <span id="price">0</span> Kč</p>
+            </div>
+        </div>
+        <div id="map"></div>
     </div>
-    <div class="input-group">
-        <label>Nakládka:</label>
-        <input type="text" id="pickup" placeholder="Začněte psát adresu...">
-    </div>
-    <div id="waypoints"></div>
-    <button onclick="addWaypoint()">+ Přidat zastávku</button>
-    <div class="input-group" style="margin-top: 15px;">
-        <label>Vykládka:</label>
-        <input type="text" id="dropoff" placeholder="Začněte psát adresu...">
-    </div>
-    <button onclick="calculateRoute()" style="margin-top:10px;">Spočítat cenu</button>
-
-    <div id="results">
-        <h3>Výsledek</h3>
-        <p>Vzdálenost: <span id="dist-val">0</span> km</p>
-        <p>Cena: <strong><span id="price-val">0</span> Kč</strong></p>
-        <small>(13 Kč/km + 20 Kč poplatek)</small>
-    </div>
-</div>
-<div id="map"></div>
 
 <script>
-    // Inicializace mapy na Domažlice
-    var map = L.map('map').setView([49.4405, 12.9321], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    const map = L.map('map').setView([49.4405, 12.9321], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    
+    const geocoder = L.Control.Geocoder.nominatim();
+    let control = null;
 
-    let routingControl;
-    const baseAddr = "B. Staška 76, Domažlice";
-    const BASE_FEE = 20;
-    const PRICE_PER_KM = 13;
-
-    function addWaypoint() {
-        const div = document.createElement('div');
-        div.className = 'input-group';
-        div.innerHTML = '<label>Průjezdný bod:</label><input type="text" class="waypoint-input" placeholder="Adresa...">';
-        document.getElementById('waypoints').appendChild(div);
+    function log(msg, isError = true) {
+        const l = document.getElementById('log');
+        l.innerText = msg;
+        l.className = isError ? 'error-log' : 'success-log';
+        console.log(msg);
     }
 
-    function calculateRoute() {
-        const pickupAddr = document.getElementById('pickup').value;
-        const dropoffAddr = document.getElementById('dropoff').value;
-        const waypointsInputs = document.querySelectorAll('.waypoint-input');
-        
-        if (!pickupAddr || !dropoffAddr) { alert("Vyplňte nakládku a vykládku"); return; }
-
-        // Sestavení pole adres (Základna -> Nakládka -> Body -> Vykládka -> Základna)
-        const addresses = [baseAddr, pickupAddr];
-        waypointsInputs.forEach(input => { if(input.value) addresses.push(input.value); });
-        addresses.push(dropoffAddr);
-        addresses.push(baseAddr);
-
-        // Geokódování a vykreslení
-        if (routingControl) map.removeControl(routingControl);
-        
-        // Zjednodušený přístup: Použijeme Nominatim geocoder pro převedení adres na souřadnice
-        const geocoder = L.Control.Geocoder.nominatim();
-        let coords = [];
-        let count = 0;
-
-        addresses.forEach((addr, index) => {
-            geocoder.geocode(addr, (results) => {
-                if (results.length > 0) {
-                    coords[index] = results[0].center;
-                }
-                count++;
-                if (count === addresses.length) {
-                    drawRoute(coords);
-                }
+    async function getCoords(addr) {
+        return new Promise((resolve, reject) => {
+            geocoder.geocode(addr, (res) => {
+                if (res && res.length > 0) resolve(res[0].center);
+                else reject("Adresa nenalezena: " + addr);
             });
         });
     }
 
-    function drawRoute(waypoints) {
-        routingControl = L.Routing.control({
-            waypoints: waypoints,
-            routeWhileDragging: false,
-            addWaypoints: false,
-            draggableWaypoints: false,
-            lineOptions: { styles: [{ color: '#2563eb', weight: 5 }] }
-        }).addTo(map);
+    async function runCalculation() {
+        const p = document.getElementById('pickup').value;
+        const d = document.getElementById('dropoff').value;
+        
+        document.getElementById('results').style.display = 'none';
+        log("Hledám souřadnice...");
 
-        routingControl.on('routesfound', function(e) {
-            let routes = e.routes;
-            let summary = routes[0].summary;
-            let totalKm = (summary.totalDistance / 1000).toFixed(1);
-            let totalPrice = Math.round((totalKm * PRICE_PER_KM) + BASE_FEE);
+        try {
+            const c1 = await getCoords(p);
+            const c2 = await getCoords(d);
             
-            document.getElementById('dist-val').innerText = totalKm;
-            document.getElementById('price-val').innerText = totalPrice;
-            document.getElementById('results').style.display = 'block';
-        });
+            log("Souřadnice nalezeny, kreslím...", false);
+            
+            if (control) map.removeControl(control);
+            
+            control = L.Routing.control({
+                waypoints: [c1, c2],
+                router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' })
+            }).addTo(map);
+
+            control.on('routesfound', function(e) {
+                const km = (e.routes[0].summary.totalDistance / 1000).toFixed(1);
+                const price = Math.round((km * 13) + 20);
+                document.getElementById('dist').innerText = km;
+                document.getElementById('price').innerText = price;
+                document.getElementById('results').style.display = 'block';
+                log("Trasa spočítána!", false);
+            });
+
+        } catch (err) {
+            log("CHYBA: " + err);
+        }
     }
 </script>
 </body>
