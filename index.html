@@ -2,103 +2,249 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
-    <title>Kalkulačka - Robustní verze</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Taxi Green Domažlice - Kalkulačka</title>
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
     <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
-    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
 
     <style>
-        body { margin: 0; padding: 10px; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
-        #app { display: flex; height: 90vh; gap: 10px; }
-        #panel { width: 350px; background: #f0f0f0; padding: 15px; overflow-y: auto; }
-        #map { flex-grow: 1; border: 2px solid #ccc; }
-        .error-log { color: red; font-weight: bold; margin: 10px 0; padding: 5px; border: 1px solid red; }
-        .success-log { color: green; margin: 10px 0; }
-        input { width: 90%; margin-bottom: 10px; padding: 8px; }
-        button { padding: 10px; width: 100%; cursor: pointer; }
+        :root {
+            --green-primary: #15803d;    /* Hlavní firemní zelená */
+            --green-light: #22c55e;      /* Světlejší pro tlačítka */
+            --green-dark: #14532d;       /* Tmavá pro texty */
+            --green-bg: #f0fdf4;         /* Velmi světlý podklad */
+            --text-dark: #1e293b;
+            --text-muted: #64748b;
+        }
+
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; overflow: hidden; }
+        
+        #app-container { display: flex; height: 100vh; width: 100vw; flex-direction: row; }
+        
+        /* Celý levý panel */
+        #panel { width: 400px; height: 100%; background: white; box-shadow: 4px 0 15px rgba(0,0,0,0.1); z-index: 1000; display: flex; flex-direction: column; flex-shrink: 0; }
+        
+        /* 1. PEVNÁ HLAVIČKA (Neroluje se) */
+        .header { background: var(--green-primary); padding: 15px 20px; color: white; text-align: center; flex-shrink: 0; }
+        .header h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
+        .header p { margin: 5px 0 0 0; font-size: 13px; opacity: 0.9; }
+
+        /* 2. PROSTŘEDNÍ ČÁST PRO ADRESY (Tato JEDINÁ se roluje, pokud je potřeba) */
+        .input-section { flex: 1; overflow-y: auto; padding: 15px 20px; background: #ffffff; }
+        
+        label { font-weight: 700; font-size: 13px; color: var(--green-dark); display: block; margin-bottom: 4px; text-transform: uppercase; }
+        .input-wrapper { position: relative; margin-bottom: 12px; }
+        input[type="text"] { width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px; box-sizing: border-box; font-size: 14px; outline: none; transition: border-color 0.2s; }
+        input[type="text"]:focus { border-color: var(--green-light); }
+
+        .autocomplete-list { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #cbd5e1; border-top: none; border-radius: 0 0 8px 8px; max-height: 180px; overflow-y: auto; z-index: 9999; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+        .autocomplete-item { padding: 10px; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: #334155; }
+        .autocomplete-item:hover { background-color: var(--green-bg); color: var(--green-primary); font-weight: 600; }
+
+        .btn-add { background: none; border: 2px dashed #cbd5e1; color: var(--text-muted); width: 100%; padding: 8px; border-radius: 8px; font-weight: 600; cursor: pointer; margin-bottom: 15px; transition: all 0.2s; }
+        .btn-add:hover { border-color: var(--green-light); color: var(--green-primary); background: var(--green-bg); }
+
+        /* 3. PEVNÁ PATIČKA S TLAČÍTKEM A CENOU (Neroluje se) */
+        .action-section { padding: 15px 20px; background: var(--green-bg); border-top: 2px solid #bbf7d0; flex-shrink: 0; }
+        .btn-calc { width: 100%; padding: 14px; background: var(--green-primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 800; font-size: 16px; text-transform: uppercase; box-shadow: 0 4px 6px -1px rgba(21, 128, 61, 0.4); transition: background 0.2s; }
+        .btn-calc:hover { background: var(--green-dark); }
+        
+        #results-box { margin-top: 15px; display: flex; justify-content: space-between; align-items: center; }
+        .res-text { font-size: 12px; color: var(--green-dark); margin: 0; font-weight: 600; }
+        .res-val { font-size: 26px; font-weight: 900; color: var(--green-primary); }
+        .formula-note { font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 8px; }
+
+        /* MAPA - Zajištěno zobrazení na 100% plochy */
+        #map { flex: 1; height: 100%; width: 100%; z-index: 1; }
+
+        /* RESPONSIVNÍ DESIGN PRO MOBILY */
+        @media (max-width: 768px) {
+            #app-container { flex-direction: column; }
+            #panel { width: 100%; height: 55vh; border-bottom: 3px solid var(--green-primary); }
+            #map { height: 45vh; width: 100%; }
+            .header { padding: 10px 15px; }
+            .header h1 { font-size: 18px; }
+            .input-section { padding: 10px 15px; }
+            .action-section { padding: 10px 15px; }
+            .btn-calc { padding: 11px; font-size: 14px; }
+            .res-val { font-size: 22px; }
+        }
     </style>
 </head>
 <body>
 
-    <div id="app">
-        <div id="panel">
-            <h2>Kalkulačka</h2>
-            <label>Nakládka:</label><br>
-            <input type="text" id="pickup" value="B. Staška 76, Domažlice"><br>
-            <label>Vykládka:</label><br>
-            <input type="text" id="dropoff" placeholder="Adresa vykládky..."><br>
-            <button onclick="runCalculation()">Vypočítat trasu</button>
-            
-            <div id="log" class="error-log"></div>
-            
-            <div id="results" style="display:none; background: #fff; padding: 10px; margin-top: 10px;">
-                <h3>Výsledek</h3>
-                <p>Vzdálenost: <span id="dist">0</span> km</p>
-                <p>Cena: <span id="price">0</span> Kč</p>
+<div id="app-container">
+    <div id="panel">
+        <div class="header">
+            <h1>Taxi Green</h1>
+            <p>Přibližná kalkulace ceny jízdy mimo město</p>
+        </div>
+        
+        <div class="input-section">
+            <div class="input-wrapper">
+                <label>1. Místo nakládky</label>
+                <input type="text" id="pickup" placeholder="Odkud? (např. Masarykova, Domažlice)..." autocomplete="off">
+                <div id="pickup-list" class="autocomplete-list"></div>
+            </div>
+
+            <div id="waypoints-container"></div>
+            <button class="btn-add" onclick="addWaypoint()">+ Přidat průjezdný bod</button>
+
+            <div class="input-wrapper">
+                <label>2. Místo vykládky</label>
+                <input type="text" id="dropoff" placeholder="Kam pojedete?..." autocomplete="off">
+                <div id="dropoff-list" class="autocomplete-list"></div>
             </div>
         </div>
-        <div id="map"></div>
+
+        <div class="action-section">
+            <button class="btn-calc" onclick="calculateRoute()">Vypočítat trasu</button>
+            <div id="results-box">
+                <div>
+                    <p class="res-text">Vzdálenost: <span id="dist-val" style="font-size: 16px;">0</span> km</p>
+                    <p class="res-text" style="margin-top: 3px;">Cena celkem:</p>
+                </div>
+                <div class="res-val"><span id="price-val">0</span> Kč</div>
+            </div>
+            <div class="formula-note">Výpočet: (Ujeté km × 13 Kč) + 20 Kč</div>
+        </div>
     </div>
 
+    <div id="map"></div>
+</div>
+
 <script>
-    const map = L.map('map').setView([49.4405, 12.9321], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-    
-    const geocoder = L.Control.Geocoder.nominatim();
-    let control = null;
+    // Inicializace mapy s pevnou výškou a šířkou
+    const map = L.map('map', { zoomControl: false }).setView([49.4405, 12.9321], 13);
+    L.control.zoom({ position: 'topright' }).addTo(map); 
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 
-    function log(msg, isError = true) {
-        const l = document.getElementById('log');
-        l.innerText = msg;
-        l.className = isError ? 'error-log' : 'success-log';
-        console.log(msg);
-    }
+    // Ošetření rozměrů mapy při startu
+    setTimeout(() => { map.invalidateSize(); }, 200);
 
-    async function getCoords(addr) {
-        return new Promise((resolve, reject) => {
-            geocoder.geocode(addr, (res) => {
-                if (res && res.length > 0) resolve(res[0].center);
-                else reject("Adresa nenalezena: " + addr);
-            });
+    const baseCoords = L.latLng(49.440478, 12.932068); 
+    let coordsData = { pickup: null, dropoff: null, waypoints: [] };
+    let tempMarkers = L.layerGroup().addTo(map); 
+    let routingControl = null;
+
+    function setupAutocomplete(inputId, listId, type, wpIndex = null) {
+        const input = document.getElementById(inputId);
+        const list = document.getElementById(listId);
+        let timeout;
+
+        input.addEventListener('input', function() {
+            clearTimeout(timeout);
+            list.innerHTML = '';
+            if (!this.value) return;
+
+            timeout = setTimeout(() => {
+                fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${this.value}&countrycodes=cz`)
+                .then(response => response.json())
+                .then(data => {
+                    list.innerHTML = '';
+                    if (data.length === 0) {
+                        list.innerHTML = '<div class="autocomplete-item" style="color:#ef4444;">Nenalezeno. Zkuste upřesnit s městem.</div>';
+                        return;
+                    }
+                    data.slice(0, 5).forEach(item => { 
+                        let div = document.createElement('div');
+                        div.className = 'autocomplete-item';
+                        div.innerText = item.display_name;
+                        
+                        div.onclick = () => {
+                            let shortName = item.display_name.split(',').slice(0, 2).join(','); 
+                            input.value = shortName; 
+                            list.innerHTML = ''; 
+                            
+                            let latlng = L.latLng(item.lat, item.lon);
+                            if (type === 'pickup') coordsData.pickup = latlng;
+                            else if (type === 'dropoff') coordsData.dropoff = latlng;
+                            else if (type === 'waypoint') coordsData.waypoints[wpIndex] = latlng;
+
+                            tempMarkers.clearLayers(); 
+                            L.marker(latlng).addTo(tempMarkers).bindPopup(shortName).openPopup();
+                            map.flyTo(latlng, 14); 
+
+                            if (coordsData.pickup && coordsData.dropoff) calculateRoute();
+                        };
+                        list.appendChild(div);
+                    });
+                });
+            }, 400);
+        });
+
+        document.addEventListener('click', (e) => {
+            if (e.target !== input) list.innerHTML = '';
         });
     }
 
-    async function runCalculation() {
-        const p = document.getElementById('pickup').value;
-        const d = document.getElementById('dropoff').value;
+    setupAutocomplete('pickup', 'pickup-list', 'pickup');
+    setupAutocomplete('dropoff', 'dropoff-list', 'dropoff');
+
+    let wpCounter = 0;
+    function addWaypoint() {
+        const id = wpCounter++;
+        const container = document.getElementById('waypoints-container');
+        const wrapper = document.createElement('div');
+        wrapper.className = 'input-wrapper';
+        wrapper.innerHTML = `
+            <label style="color: var(--text-muted);">Průjezdný bod</label>
+            <input type="text" id="wp-input-${id}" placeholder="Začněte psát..." autocomplete="off">
+            <div id="wp-list-${id}" class="autocomplete-list"></div>
+        `;
+        container.appendChild(wrapper);
+        setupAutocomplete(`wp-input-${id}`, `wp-list-${id}`, 'waypoint', id);
         
-        document.getElementById('results').style.display = 'none';
-        log("Hledám souřadnice...");
-
-        try {
-            const c1 = await getCoords(p);
-            const c2 = await getCoords(d);
-            
-            log("Souřadnice nalezeny, kreslím...", false);
-            
-            if (control) map.removeControl(control);
-            
-            control = L.Routing.control({
-                waypoints: [c1, c2],
-                router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' })
-            }).addTo(map);
-
-            control.on('routesfound', function(e) {
-                const km = (e.routes[0].summary.totalDistance / 1000).toFixed(1);
-                const price = Math.round((km * 13) + 20);
-                document.getElementById('dist').innerText = km;
-                document.getElementById('price').innerText = price;
-                document.getElementById('results').style.display = 'block';
-                log("Trasa spočítána!", false);
-            });
-
-        } catch (err) {
-            log("CHYBA: " + err);
-        }
+        document.querySelector('.input-section').scrollTop = 1000;
     }
+
+    function calculateRoute() {
+        if (!coordsData.pickup || !coordsData.dropoff) {
+            alert("Vyberte prosím adresy z rozbalovací nabídky našeptávače.");
+            return;
+        }
+
+        tempMarkers.clearLayers();
+
+        let finalPoints = [baseCoords, coordsData.pickup];
+        coordsData.waypoints.forEach(wp => { if (wp) finalPoints.push(wp); });
+        finalPoints.push(coordsData.dropoff);
+        finalPoints.push(baseCoords);
+
+        if (routingControl) map.removeControl(routingControl);
+
+        routingControl = L.Routing.control({
+            waypoints: finalPoints,
+            router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+            lineOptions: { styles: [{ color: '#15803d', opacity: 0.8, weight: 6 }] }, 
+            fitSelectedRoutes: true,
+            show: false, 
+            createMarker: function(i, wp, nWps) {
+                let label = "Bod trasy";
+                if (i === 0 || i === nWps - 1) label = "Základna Domažlice";
+                else if (i === 1) label = "Nakládka";
+                else if (i === nWps - 2) label = "Vykládka";
+                return L.marker(wp.latLng).bindPopup(`<b>${label}</b>`);
+            }
+        }).addTo(map);
+
+        routingControl.on('routesfound', function(e) {
+            let distanceInKm = (e.routes[0].summary.totalDistance / 1000).toFixed(1);
+            let totalPrice = Math.round((distanceInKm * 13) + 20);
+            
+            document.getElementById('dist-val').innerText = distanceInKm;
+            document.getElementById('price-val').innerText = totalPrice.toLocaleString('cs-CZ');
+            
+            setTimeout(() => { map.invalidateSize(); }, 300);
+        });
+    }
+    
+    // Oprava velikosti mapy při otočení mobilu nebo změně okna
+    window.addEventListener('resize', () => { map.invalidateSize(); });
 </script>
 </body>
 </html>
